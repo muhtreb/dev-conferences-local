@@ -1,0 +1,73 @@
+version: "3.8"
+
+services:
+    traefik:
+        restart: unless-stopped
+        image: traefik:v2.0.2
+        ports:
+            - "80:80"
+            - "443:443"
+            - "8080:8080"
+        labels:
+            - "traefik.http.services.traefik.loadbalancer.server.port=8080"
+        volumes:
+            - ./traefik.yml:/etc/traefik/traefik.yml
+            - ./tls.yml:/etc/traefik/tls.yml
+            - /var/run/docker.sock:/var/run/docker.sock
+            - dev-conferences-certs:/etc/ssl/traefik
+        networks:
+            - dev-conferences-traefik
+
+    reverse-proxy-https-helper:
+        image: alpine
+        command: sh -c "cd /etc/ssl/traefik && wget traefik.me/cert.pem -O cert.pem && wget traefik.me/privkey.pem -O privkey.pem"
+        volumes:
+            - dev-conferences-certs:/etc/ssl/traefik
+
+    postgres:
+        image: postgres:14.1
+        container_name: dev-conferences-local-postgres
+        restart: unless-stopped
+        ports:
+            - '54395:5432'
+        volumes:
+            - .data/postgres:/var/lib/postgresql/data
+            - .data/postgresdump:/tmp/dump
+        environment:
+            - POSTGRES_DB=development
+            - POSTGRES_PASSWORD=password
+            - POSTGRES_USER=development
+        networks:
+            - dev-conferences-services
+
+    meilisearch:
+        image: getmeili/meilisearch:latest
+        container_name: dev-conferences-local-meilisearch
+        restart: unless-stopped
+        ports:
+            - '7700:7700'
+        volumes:
+            - .data/meilisearch:/data.ms
+        networks:
+            - dev-conferences-services
+        # master key
+        environment:
+            - MEILI_MASTER_KEY=masterKey
+
+    mailcatcher:
+        container_name: dev-conferences-local-mailcatcher
+        image: dockage/mailcatcher
+        ports:
+            - '1094:1080'
+        networks:
+            - dev-conferences-services
+
+volumes:
+    dev-conferences-certs:
+        external: true
+
+networks:
+    dev-conferences-services:
+        external: true
+    dev-conferences-traefik:
+        external: true
